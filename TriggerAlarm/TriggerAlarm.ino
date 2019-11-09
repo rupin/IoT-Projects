@@ -13,6 +13,10 @@
 
 #include <WiFiClient.h>
 
+extern "C" {
+#include <user_interface.h>
+}
+
 //We can keep 100 bytes per field in the EEPROM
 //ESP-01 has a 4096 bytes long EEPROM
 #define IFTTT_TOKEN_START_ADDRESS 100
@@ -25,6 +29,8 @@ const char* ifttt_token;
 
 //flag for saving data
 bool shouldSaveConfig = false;
+bool sensorTrigger=false;
+
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
@@ -92,9 +98,37 @@ const char* getEEPROMData(int fieldstartaddress) {
 
 void setup() {
   // put your setup code here, to run once:
+
+
+  /* We wish to evaluate how the reset happened 
+  /* It is possible we could reach here either by a loss of power or actual reset */
+  /* Loss of Power should not lead to a notification being sent */
+  
+  rst_info *resetInfo;
+ 
+  resetInfo = ESP.getResetInfoPtr();
+  
+  
+
+  
   Serial.begin(115200);
   Serial.println();
   EEPROM.begin(512);
+
+  int reasonCode=(*resetInfo).reason;
+
+
+  if(reasonCode==6)/* If we Lost power and got our Power Back */
+  {
+    sensorTrigger=false; 
+    /* Maybe we do nothing and go back to sleep */
+    ESP.deepSleep(0);
+  }
+
+  if(reasonCode==5) /* If there was a reset button pressed */
+  {
+    sensorTrigger=true;
+  }
 
 
   // Lets look at the data that exists in the EEPROM
@@ -164,20 +198,20 @@ void setup() {
   /*At this Point, we have connected to the User supplied Access Point
     and we have access to the user
   */
-  if (!shouldSaveConfig)
+  if (!shouldSaveConfig && sensorTrigger)
   {
     Serial.println(ifttt_event);
     Serial.println(ifttt_token);
 
 
-   
+
 
     HTTPClient http;
 
     char* URL_P1 = "http://maker.ifttt.com/trigger/";
     char * URL_P2 = "/with/key/";
 
-    
+
     int URLLength = strlen(URL_P1) + strlen(ifttt_event) + strlen(URL_P2) + strlen(ifttt_token) - 1;
 
     char *URL = (char*)calloc ( URLLength, sizeof (char));
@@ -188,7 +222,7 @@ void setup() {
     strcat(URL, ifttt_token);
 
     Serial.println(URL);
-    
+
     http.begin(URL);
 
     int httpCode = http.GET();
