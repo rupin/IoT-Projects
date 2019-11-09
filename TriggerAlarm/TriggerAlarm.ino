@@ -22,6 +22,8 @@ extern "C" {
 #define IFTTT_TOKEN_START_ADDRESS 100
 #define IFTTT_EVENT_START_ADDRESS 200
 
+#define MAC_LENGTH 6
+
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 const char* ifttt_event;
@@ -29,7 +31,7 @@ const char* ifttt_token;
 
 //flag for saving data
 bool shouldSaveConfig = false;
-bool sensorTrigger=false;
+bool sensorTrigger = false;
 
 
 //callback notifying us of the need to save config
@@ -95,39 +97,58 @@ const char* getEEPROMData(int fieldstartaddress) {
   return dataString;
 }
 
+char getHEXValue(uint8_t value)
+{
+  if (value < 10)
+  {
+
+    return 48 + value;
+  }
+  else
+  {
+
+    return 55 + value;
+  }
+}
+
+
+
+
+
+
 
 void setup() {
   // put your setup code here, to run once:
 
 
-  /* We wish to evaluate how the reset happened 
-  /* It is possible we could reach here either by a loss of power or actual reset */
+  /* We wish to evaluate how the reset happened
+    /* It is possible we could reach here either by a loss of power or actual reset */
   /* Loss of Power should not lead to a notification being sent */
-  
-  rst_info *resetInfo;
- 
-  resetInfo = ESP.getResetInfoPtr();
-  
-  
 
-  
+  rst_info *resetInfo;
+
+  resetInfo = ESP.getResetInfoPtr();
+
+
+
+
   Serial.begin(115200);
   Serial.println();
   EEPROM.begin(512);
 
-  int reasonCode=(*resetInfo).reason;
+  int reasonCode = (*resetInfo).reason;
 
 
-  if(reasonCode==6)/* If we Lost power and got our Power Back */
+  if (reasonCode == 6) /* If we Lost power and got our Power Back */
   {
-    sensorTrigger=false; 
+    sensorTrigger = false;
     /* Maybe we do nothing and go back to sleep */
     ESP.deepSleep(0);
   }
 
-  if(reasonCode==5) /* If there was a reset button pressed */
+  if (reasonCode == 5) /* If there was a reset button pressed */
   {
-    sensorTrigger=true;
+    sensorTrigger = true;
   }
 
 
@@ -203,23 +224,49 @@ void setup() {
     Serial.println(ifttt_event);
     Serial.println(ifttt_token);
 
+    uint8_t mac[MAC_LENGTH];
+    WiFi.macAddress(mac);
+
+
+
+
+
+    String MACString = "";
+    uint8_t i;
+    for (i = 0; i < MAC_LENGTH; i++)
+    {
+      uint8_t MSN = (mac[i] & 0xF0) >> 4;
+      uint8_t LSN = (mac[i] & 0x0F);
+
+      uint8_t current_index = i << 1; //Multiply by 2
+      //Serial.println(current_index);
+      MACString = MACString + getHEXValue(MSN);
+      MACString = MACString + getHEXValue(LSN);
+
+
+    }
+
+
 
 
 
     HTTPClient http;
 
-    char* URL_P1 = "http://maker.ifttt.com/trigger/";
-    char * URL_P2 = "/with/key/";
+    String URL = "http://maker.ifttt.com/trigger/IFTTT_EVENT/with/key/IFTTT_TOKEN?value1=VALUE_1";
+    String IFTTT_EVENT(ifttt_event);
+    String IFTTT_TOKEN(ifttt_token);
+    //String MACString(MACResult);
+    URL.replace("IFTTT_EVENT", IFTTT_EVENT);
+    URL.replace("IFTTT_TOKEN", IFTTT_TOKEN);
 
+    MD5Builder md5;
+    md5.begin();
+    md5.add(MACString);
+    md5.calculate();
+    
+    URL.replace("VALUE_1", md5.toString());
 
-    int URLLength = strlen(URL_P1) + strlen(ifttt_event) + strlen(URL_P2) + strlen(ifttt_token) - 1;
-
-    char *URL = (char*)calloc ( URLLength, sizeof (char));
-
-    strcat(URL, URL_P1);
-    strcat(URL, ifttt_event);
-    strcat(URL, URL_P2);
-    strcat(URL, ifttt_token);
+    
 
     Serial.println(URL);
 
